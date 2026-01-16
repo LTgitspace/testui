@@ -36,7 +36,7 @@ class RobotConnection:
             user=USER_ID,
             vel=vel,
             ovl=ovl,
-            blendR=-1.0
+            blendR=5.0
         )
 
     def stop_motion(self):
