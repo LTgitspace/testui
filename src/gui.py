@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 from src.config import *
 from src.constraint_frame import ConstraintFrame
+from src.config import HOME_POSITION
 
 
 class CobotControlGUI:
@@ -238,29 +239,57 @@ class CobotControlGUI:
             return
 
         try:
-            self.update_info("Resetting joints to 0 position...")
+            self.update_info("Resetting joints to 0 position (Unwinding)...")
             self.root.update()
 
+            # 1. Unwind to Zero Joints (Safe High/Candlestick)
+            # Use very slow velocity from config
             error = self.connection.move_j(RESET_JOINTS_POSITION, RESET_VELOCITY, RESET_OVERDRIVE)
 
             if error == 0:
+                self.update_info("Joints reset. Moving to Home Position...")
+                # Allow some time for motion to settle/start
                 import time
                 time.sleep(0.5)
 
-                self.constraint_frames['X'].set_value(0.0)
-                self.constraint_frames['Y'].set_value(0.0)
-                self.constraint_frames['Z'].set_value(100.0)
+                # 2. Move to Home Position (Cartesian)
+                # We use MoveL to go straight to the working height safely.
+                error = self.connection.move_l(HOME_POSITION, RESET_VELOCITY, RESET_OVERDRIVE)
 
-                self.current_pos['X'] = 0.0
-                self.current_pos['Y'] = 0.0
-                self.current_pos['Z'] = 100.0
+                if error == 0:
+                    time.sleep(0.5)
 
-                self.root.after(0, lambda: self.pos_label.config(text=f"X: 0.00  Y: 0.00  Z: 100.00"))
-                self.update_info("Joints reset to 0 and moved to safe position")
+                    self.constraint_frames['X'].set_value(HOME_POSITION[0])
+                    self.constraint_frames['Y'].set_value(HOME_POSITION[1])
+                    self.constraint_frames['Z'].set_value(HOME_POSITION[2])
+
+                    self.current_pos['X'] = HOME_POSITION[0]
+                    self.current_pos['Y'] = HOME_POSITION[1]
+                    self.current_pos['Z'] = HOME_POSITION[2]
+
+                    self.root.after(0, lambda: self.pos_label.config(
+                         text=f"X: {HOME_POSITION[0]:.2f}  Y: {HOME_POSITION[1]:.2f}  Z: {HOME_POSITION[2]:.2f}"
+                    ))
+                    self.update_info("Reset Complete: Robot at Home Position")
+                else:
+                    self.update_info(f"Reset Partial: Unwound to 0, but Home Move Failed ({error})")
             else:
                 self.update_info(f"Joint reset failed with error {error}")
         except Exception as e:
             self.update_info(f"Error resetting joints: {str(e)}")
+            print(f"Reset Exception: {e}")
+
+    # ...existing code...
+    def move_to_reset(self):
+        if not self.connection or not self.connection.is_connected:
+            messagebox.showerror(
+                "Robot Not Connected",
+                "Cannot reset joints.\n\n"
+                "Please connect to the robot first using the 'Connect' button."
+            )
+            return
+        # Re-use reset_joints logic
+        self.reset_joints()
 
     def move_to_position(self):
         if not self.connection or not self.connection.is_connected:
@@ -326,9 +355,9 @@ class CobotControlGUI:
                 import time
                 time.sleep(0.5)
 
-                self.constraint_frames['X'].set_value(0.0)
-                self.constraint_frames['Y'].set_value(0.0)
-                self.constraint_frames['Z'].set_value(100.0)
+                self.constraint_frames['X'].set_value(HOME_POSITION[0])
+                self.constraint_frames['Y'].set_value(HOME_POSITION[1])
+                self.constraint_frames['Z'].set_value(HOME_POSITION[2])
 
                 self.current_pos['X'] = 0.0
                 self.current_pos['Y'] = 0.0
@@ -353,51 +382,7 @@ class CobotControlGUI:
             )
             self.update_info(f"Error: {str(e)}")
 
-    def move_to_reset(self):
-        if not self.connection or not self.connection.is_connected:
-            messagebox.showerror(
-                "Robot Not Connected",
-                "Cannot reset joints.\n\n"
-                "Please connect to the robot first using the 'Connect' button."
-            )
-            return
 
-        try:
-            self.update_info("Resetting joints to 0 position...")
-            self.root.update()
-
-            error = self.connection.move_j(RESET_JOINTS_POSITION, RESET_VELOCITY, RESET_OVERDRIVE)
-
-            if error == 0:
-                import time
-                time.sleep(0.5)
-
-                self.constraint_frames['X'].set_value(0.0)
-                self.constraint_frames['Y'].set_value(0.0)
-                self.constraint_frames['Z'].set_value(100.0)
-
-                self.current_pos['X'] = 0.0
-                self.current_pos['Y'] = 0.0
-                self.current_pos['Z'] = 100.0
-
-                self.root.after(0, lambda: self.pos_label.config(text=f"X: 0.00  Y: 0.00  Z: 100.00"))
-                self.update_info("Joints reset to 0 position")
-            else:
-                messagebox.showerror(
-                    "Reset Error",
-                    f"Failed to reset robot joints to 0.\n\n"
-                    f"Error Code: {error}\n\n"
-                    f"Target Joint Position: 0.0, 0.0, 0.0, 0.0, 0.0, 0.0\n\n"
-                    f"Please check robot status and try again."
-                )
-                self.update_info(f"Reset failed with error {error}")
-        except Exception as e:
-            messagebox.showerror(
-                "Reset Exception",
-                f"An unexpected error occurred during reset:\n\n{str(e)}\n\n"
-                f"Please verify the robot is in a safe state."
-            )
-            self.update_info(f"Error: {str(e)}")
 
     def stop_motion(self):
         if not self.connection or not self.connection.is_connected:

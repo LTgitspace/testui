@@ -22,9 +22,16 @@ MAX_VELOCITY = 100
 MIN_OVERDRIVE = 1
 MAX_OVERDRIVE = 100
 
-RESET_VELOCITY = 5
-RESET_OVERDRIVE = 100
-RESET_POSITION = [0.0, 0.0, 100.0, 0.0, 0.0, 0.0]
+RESET_VELOCITY = 5   # Very slow safety speed for reset
+RESET_OVERDRIVE = 20 # Low power for reset
+# The robot moves to this Cartesian position AFTER unwinding joints
+# Format: [X, Y, Z, Rx, Ry, Rz] (Units: mm, degrees)
+# Matches the "Cartesian" or "Base" coordinates in the Web UI.
+HOME_POSITION = [0.0, 0.0, 100.0, 0.0, 0.0, 0.0]
+
+# The robot moves to these joint angles FIRST to untwist (Candlestick pose)
+# Format: [J1, J2, J3, J4, J5, J6] (Units: degrees)
+# Matches the "Joint" angles (J1-J6) in the Web UI.
 RESET_JOINTS_POSITION = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 
 MONITOR_THREAD_INTERVAL = 0.5
