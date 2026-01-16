@@ -238,12 +238,25 @@ class CobotControlGUI:
             return
 
         try:
-            error = self.connection.move_l(RESET_POSITION, RESET_VELOCITY, RESET_OVERDRIVE)
+            self.update_info("Resetting joints to 0 position...")
+            self.root.update()
+
+            error = self.connection.move_j(RESET_JOINTS_POSITION, RESET_VELOCITY, RESET_OVERDRIVE)
 
             if error == 0:
+                import time
+                time.sleep(0.5)
+
                 self.constraint_frames['X'].set_value(0.0)
                 self.constraint_frames['Y'].set_value(0.0)
                 self.constraint_frames['Z'].set_value(100.0)
+
+                self.current_pos['X'] = 0.0
+                self.current_pos['Y'] = 0.0
+                self.current_pos['Z'] = 100.0
+
+                self.root.after(0, lambda: self.pos_label.config(text=f"X: 0.00  Y: 0.00  Z: 100.00"))
+                self.update_info("Joints reset to 0 and moved to safe position")
             else:
                 self.update_info(f"Joint reset failed with error {error}")
         except Exception as e:
@@ -310,9 +323,18 @@ class CobotControlGUI:
             error = self.connection.move_l(HOME_POSITION, self.velocity_var.get(), self.overdrive_var.get())
 
             if error == 0:
+                import time
+                time.sleep(0.5)
+
                 self.constraint_frames['X'].set_value(0.0)
                 self.constraint_frames['Y'].set_value(0.0)
                 self.constraint_frames['Z'].set_value(100.0)
+
+                self.current_pos['X'] = 0.0
+                self.current_pos['Y'] = 0.0
+                self.current_pos['Z'] = 100.0
+
+                self.root.after(0, lambda: self.pos_label.config(text=f"X: 0.00  Y: 0.00  Z: 100.00"))
                 self.update_info("Home position reached")
             else:
                 messagebox.showerror(
@@ -341,22 +363,31 @@ class CobotControlGUI:
             return
 
         try:
-            self.update_info("Resetting to safe position...")
+            self.update_info("Resetting joints to 0 position...")
             self.root.update()
 
-            error = self.connection.move_l(RESET_POSITION, RESET_VELOCITY, RESET_OVERDRIVE)
+            error = self.connection.move_j(RESET_JOINTS_POSITION, RESET_VELOCITY, RESET_OVERDRIVE)
 
             if error == 0:
+                import time
+                time.sleep(0.5)
+
                 self.constraint_frames['X'].set_value(0.0)
                 self.constraint_frames['Y'].set_value(0.0)
                 self.constraint_frames['Z'].set_value(100.0)
-                self.update_info("Robot reset to safe position")
+
+                self.current_pos['X'] = 0.0
+                self.current_pos['Y'] = 0.0
+                self.current_pos['Z'] = 100.0
+
+                self.root.after(0, lambda: self.pos_label.config(text=f"X: 0.00  Y: 0.00  Z: 100.00"))
+                self.update_info("Joints reset to 0 position")
             else:
                 messagebox.showerror(
                     "Reset Error",
-                    f"Failed to reset robot to safe position.\n\n"
+                    f"Failed to reset robot joints to 0.\n\n"
                     f"Error Code: {error}\n\n"
-                    f"Target Position: X: 0.0mm, Y: 0.0mm, Z: 100.0mm\n\n"
+                    f"Target Joint Position: 0.0, 0.0, 0.0, 0.0, 0.0, 0.0\n\n"
                     f"Please check robot status and try again."
                 )
                 self.update_info(f"Reset failed with error {error}")

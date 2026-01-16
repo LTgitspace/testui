@@ -1,5 +1,3 @@
-import tkinter as tk
-from tkinter import ttk, messagebox
 from src.config import *
 
 
@@ -37,6 +35,18 @@ class RobotConnection:
             vel=vel,
             ovl=ovl,
             blendR=5.0
+        )
+
+    def move_j(self, joint_pos, vel, ovl):
+        if not self.robot:
+            return -1
+        return self.robot.MoveJ(
+            joint_pos=joint_pos,
+            tool=TOOL_ID,
+            user=USER_ID,
+            vel=vel,
+            ovl=ovl,
+            blendT=-1.0
         )
 
     def stop_motion(self):

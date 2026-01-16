@@ -9,10 +9,10 @@ DEFAULT_ROBOT_PORT = 20003
 AXIS_CONSTRAINTS = {
     'X': {'min': -200, 'max': 200, 'current': 0},
     'Y': {'min': -200, 'max': 200, 'current': 0},
-    'Z': {'min': 0, 'max': 200, 'current': 100}
+    'Z': {'min': 50, 'max': 200, 'current': 100}
 }
 
-DEFAULT_POSITION = {'X': 0, 'Y': 0, 'Z': 500}
+DEFAULT_POSITION = {'X': 0, 'Y': 0, 'Z': 100}
 HOME_POSITION = [0.0, 0.0, 100.0, 0.0, 0.0, 0.0]
 
 DEFAULT_VELOCITY = 20
@@ -25,6 +25,7 @@ MAX_OVERDRIVE = 100
 RESET_VELOCITY = 5
 RESET_OVERDRIVE = 100
 RESET_POSITION = [0.0, 0.0, 100.0, 0.0, 0.0, 0.0]
+RESET_JOINTS_POSITION = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 
 MONITOR_THREAD_INTERVAL = 0.5
 TOOL_ID = 0
