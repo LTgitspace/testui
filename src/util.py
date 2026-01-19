@@ -26,28 +26,37 @@ class RobotConnection:
         self.robot = None
 
     def move_l(self, desc_pos, vel, ovl):
-        if not self.robot:
+        if not self.robot or not hasattr(self.robot, 'robot'):
             return -1
-        return self.robot.MoveL(
-            desc_pos=desc_pos,
-            tool=TOOL_ID,
-            user=USER_ID,
-            vel=vel,
-            ovl=ovl,
-            blendR=5.0
-        )
+        vel = max(1.0, min(100.0, float(vel)))
+        ovl = max(1.0, min(100.0, float(ovl)))
+        desc_pos = [float(x) for x in desc_pos]
+        if len(desc_pos) < 6:
+            desc_pos.extend([0.0] * (6 - len(desc_pos)))
+        desc_pos = desc_pos[:6]
+
+        try:
+            return self.robot.robot.MoveCart(
+                desc_pos,
+                int(TOOL_ID),
+                int(USER_ID),
+                float(vel),
+                0.0,
+                float(ovl),
+                -1.0,
+                int(-1)
+            )
+        except Exception as e:
+            print(f"MoveCart error: {e}")
+            return -1
 
     def move_j(self, joint_pos, vel, ovl):
         if not self.robot:
             return -1
-        return self.robot.MoveJ(
-            joint_pos=joint_pos,
-            tool=TOOL_ID,
-            user=USER_ID,
-            vel=vel,
-            ovl=ovl,
-            blendT=-1.0
-        )
+        vel = max(1.0, min(100.0, float(vel)))
+        ovl = max(1.0, min(100.0, float(ovl)))
+        joint_pos = [float(x) for x in joint_pos]
+        return self.robot.MoveJ(joint_pos, TOOL_ID, USER_ID, vel=vel, ovl=ovl)
 
     def stop_motion(self):
         if not self.robot:

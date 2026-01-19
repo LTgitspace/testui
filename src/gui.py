@@ -1,8 +1,9 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
+import tkinter as tk
 from src.config import *
 from src.constraint_frame import ConstraintFrame
-from src.config import HOME_POSITION
+from src.config import HOME_POSITION, ROTATION_CONSTRAINTS
 
 
 class CobotControlGUI:
@@ -17,9 +18,12 @@ class CobotControlGUI:
         self.stop_monitoring = False
 
         self.axis_constraints = {k: v.copy() for k, v in AXIS_CONSTRAINTS.items()}
+        self.rotation_constraints = {k: v.copy() for k, v in ROTATION_CONSTRAINTS.items()}
         self.current_pos = DEFAULT_POSITION.copy()
+        self.current_rot = DEFAULT_ROTATION.copy()
 
         self.constraint_frames = {}
+        self.rotation_frames = {}
         self.velocity_var = tk.IntVar(value=DEFAULT_VELOCITY)
         self.overdrive_var = tk.IntVar(value=DEFAULT_OVERDRIVE)
         self.ip_var = tk.StringVar(value=DEFAULT_ROBOT_IP)
@@ -66,8 +70,10 @@ class CobotControlGUI:
         self.status_label.grid(row=0, column=3, padx=10)
 
     def _create_control_frame(self, parent):
-        control_frame = ttk.LabelFrame(parent, text="3-Axis Control (mm)", padding="15")
+        control_frame = ttk.LabelFrame(parent, text="Position & Rotation Control", padding="15")
         control_frame.grid(row=1, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=10)
+
+        ttk.Label(control_frame, text="Position (mm):", font=("Arial", 10, "bold")).grid(row=0, column=0, columnspan=3, sticky=tk.W, padx=5, pady=5)
 
         for idx, axis in enumerate(['X', 'Y', 'Z']):
             constraint_frame = ConstraintFrame(
@@ -76,8 +82,20 @@ class CobotControlGUI:
                 self.axis_constraints,
                 self.update_info
             )
-            constraint_frame.get_frame().grid(row=idx, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=8)
+            constraint_frame.get_frame().grid(row=idx+1, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=8)
             self.constraint_frames[axis] = constraint_frame
+
+        ttk.Label(control_frame, text="Rotation (degrees):", font=("Arial", 10, "bold")).grid(row=4, column=0, columnspan=3, sticky=tk.W, padx=5, pady=5)
+
+        for idx, axis in enumerate(['Rx', 'Ry', 'Rz']):
+            constraint_frame = ConstraintFrame(
+                control_frame,
+                axis,
+                self.rotation_constraints,
+                self.update_info
+            )
+            constraint_frame.get_frame().grid(row=idx+5, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=8)
+            self.rotation_frames[axis] = constraint_frame
 
     def _create_movement_frame(self, parent):
         move_frame = ttk.LabelFrame(parent, text="Movement Control", padding="10")
@@ -109,7 +127,7 @@ class CobotControlGUI:
         self.home_btn = ttk.Button(btn_frame, text="Home Position", command=self.move_to_home, state=tk.DISABLED)
         self.home_btn.pack(side=tk.LEFT, padx=5)
 
-        self.reset_btn = ttk.Button(btn_frame, text="Reset Joints (0,0,0)", command=self.move_to_reset, state=tk.DISABLED)
+        self.reset_btn = ttk.Button(btn_frame, text="Reset Joints", command=self.move_to_reset, state=tk.DISABLED)
         self.reset_btn.pack(side=tk.LEFT, padx=5)
 
         move_frame.columnconfigure(1, weight=1)
@@ -239,40 +257,27 @@ class CobotControlGUI:
             return
 
         try:
-            self.update_info("Resetting joints to 0 position (Unwinding)...")
+            self.update_info("Resetting joints to 0 position...")
             self.root.update()
 
-            # 1. Unwind to Zero Joints (Safe High/Candlestick)
-            # Use very slow velocity from config
             error = self.connection.move_j(RESET_JOINTS_POSITION, RESET_VELOCITY, RESET_OVERDRIVE)
 
             if error == 0:
-                self.update_info("Joints reset. Moving to Home Position...")
-                # Allow some time for motion to settle/start
                 import time
                 time.sleep(0.5)
 
-                # 2. Move to Home Position (Cartesian)
-                # We use MoveL to go straight to the working height safely.
-                error = self.connection.move_l(HOME_POSITION, RESET_VELOCITY, RESET_OVERDRIVE)
+                self.constraint_frames['X'].set_value(HOME_POSITION[0])
+                self.constraint_frames['Y'].set_value(HOME_POSITION[1])
+                self.constraint_frames['Z'].set_value(HOME_POSITION[2])
 
-                if error == 0:
-                    time.sleep(0.5)
+                self.current_pos['X'] = HOME_POSITION[0]
+                self.current_pos['Y'] = HOME_POSITION[1]
+                self.current_pos['Z'] = HOME_POSITION[2]
 
-                    self.constraint_frames['X'].set_value(HOME_POSITION[0])
-                    self.constraint_frames['Y'].set_value(HOME_POSITION[1])
-                    self.constraint_frames['Z'].set_value(HOME_POSITION[2])
-
-                    self.current_pos['X'] = HOME_POSITION[0]
-                    self.current_pos['Y'] = HOME_POSITION[1]
-                    self.current_pos['Z'] = HOME_POSITION[2]
-
-                    self.root.after(0, lambda: self.pos_label.config(
-                         text=f"X: {HOME_POSITION[0]:.2f}  Y: {HOME_POSITION[1]:.2f}  Z: {HOME_POSITION[2]:.2f}"
-                    ))
-                    self.update_info("Reset Complete: Robot at Home Position")
-                else:
-                    self.update_info(f"Reset Partial: Unwound to 0, but Home Move Failed ({error})")
+                self.root.after(0, lambda: self.pos_label.config(
+                     text=f"X: {HOME_POSITION[0]:.2f}  Y: {HOME_POSITION[1]:.2f}  Z: {HOME_POSITION[2]:.2f}"
+                ))
+                self.update_info("Reset Complete: Joints at 0 degrees")
             else:
                 self.update_info(f"Joint reset failed with error {error}")
         except Exception as e:
@@ -301,12 +306,14 @@ class CobotControlGUI:
             return
 
         try:
-            desc_pos = [
-                self.constraint_frames['X'].get_value(),
-                self.constraint_frames['Y'].get_value(),
-                self.constraint_frames['Z'].get_value(),
-                0.0, 0.0, 0.0
-            ]
+            x = self.constraint_frames['X'].get_value()
+            y = self.constraint_frames['Y'].get_value()
+            z = self.constraint_frames['Z'].get_value()
+            rx = self.rotation_frames['Rx'].get_value()
+            ry = self.rotation_frames['Ry'].get_value()
+            rz = self.rotation_frames['Rz'].get_value()
+
+            desc_pos = [x, y, z, rx, ry, rz]
 
             self.update_info("Moving to position...")
             self.root.update()
@@ -317,6 +324,9 @@ class CobotControlGUI:
                 self.current_pos['X'] = desc_pos[0]
                 self.current_pos['Y'] = desc_pos[1]
                 self.current_pos['Z'] = desc_pos[2]
+                self.current_rot['Rx'] = desc_pos[3]
+                self.current_rot['Ry'] = desc_pos[4]
+                self.current_rot['Rz'] = desc_pos[5]
                 self.update_info("Movement completed successfully")
             else:
                 messagebox.showerror(
@@ -324,7 +334,8 @@ class CobotControlGUI:
                     f"Failed to move robot to position.\n\n"
                     f"Error Code: {error}\n\n"
                     f"Target Position:\n"
-                    f"X: {desc_pos[0]:.2f}mm, Y: {desc_pos[1]:.2f}mm, Z: {desc_pos[2]:.2f}mm\n\n"
+                    f"X: {desc_pos[0]:.2f}mm, Y: {desc_pos[1]:.2f}mm, Z: {desc_pos[2]:.2f}mm\n"
+                    f"Rx: {desc_pos[3]:.2f}°, Ry: {desc_pos[4]:.2f}°, Rz: {desc_pos[5]:.2f}°\n\n"
                     f"Please check if position is within safe range."
                 )
                 self.update_info(f"Movement failed with error {error}")
@@ -358,19 +369,27 @@ class CobotControlGUI:
                 self.constraint_frames['X'].set_value(HOME_POSITION[0])
                 self.constraint_frames['Y'].set_value(HOME_POSITION[1])
                 self.constraint_frames['Z'].set_value(HOME_POSITION[2])
+                self.rotation_frames['Rx'].set_value(HOME_POSITION[3])
+                self.rotation_frames['Ry'].set_value(HOME_POSITION[4])
+                self.rotation_frames['Rz'].set_value(HOME_POSITION[5])
 
-                self.current_pos['X'] = 0.0
-                self.current_pos['Y'] = 0.0
-                self.current_pos['Z'] = 100.0
+                self.current_pos['X'] = HOME_POSITION[0]
+                self.current_pos['Y'] = HOME_POSITION[1]
+                self.current_pos['Z'] = HOME_POSITION[2]
+                self.current_rot['Rx'] = HOME_POSITION[3]
+                self.current_rot['Ry'] = HOME_POSITION[4]
+                self.current_rot['Rz'] = HOME_POSITION[5]
 
-                self.root.after(0, lambda: self.pos_label.config(text=f"X: 0.00  Y: 0.00  Z: 100.00"))
+                self.root.after(0, lambda: self.pos_label.config(
+                    text=f"X: {HOME_POSITION[0]:.2f}  Y: {HOME_POSITION[1]:.2f}  Z: {HOME_POSITION[2]:.2f}  Rx: {HOME_POSITION[3]:.2f}°  Ry: {HOME_POSITION[4]:.2f}°  Rz: {HOME_POSITION[5]:.2f}°"
+                ))
                 self.update_info("Home position reached")
             else:
                 messagebox.showerror(
                     "Home Position Error",
                     f"Failed to move robot to home position.\n\n"
                     f"Error Code: {error}\n\n"
-                    f"Home Position: X: 0.0mm, Y: 0.0mm, Z: 100.0mm\n\n"
+                    f"Home Position: X: {HOME_POSITION[0]:.1f}mm, Y: {HOME_POSITION[1]:.1f}mm, Z: {HOME_POSITION[2]:.1f}mm\n\n"
                     f"Please check robot status and try again."
                 )
                 self.update_info(f"Home movement failed with error {error}")
