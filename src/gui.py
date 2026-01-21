@@ -40,6 +40,16 @@ class CobotControlGUI:
         self.vel_label = None
         self.ovl_label = None
 
+        self.jog_velocity_var = tk.IntVar(value=DEFAULT_VELOCITY)
+        self.jog_overdrive_var = tk.IntVar(value=DEFAULT_OVERDRIVE)
+        self.jog_axis_var = tk.StringVar(value="X")
+        self.jogging_active = False
+        self.jog_vel_label = None
+        self.jog_ovl_label = None
+        self.jog_positive_btn = None
+        self.jog_negative_btn = None
+        self.jog_stop_btn = None
+
         self.create_widgets()
 
     def create_widgets(self):
@@ -49,6 +59,7 @@ class CobotControlGUI:
         self._create_connection_frame(main_frame)
         self._create_control_frame(main_frame)
         self._create_movement_frame(main_frame)
+        self._create_jogging_frame(main_frame)
         self._create_status_frame(main_frame)
 
         self.root.columnconfigure(0, weight=1)
@@ -132,9 +143,51 @@ class CobotControlGUI:
 
         move_frame.columnconfigure(1, weight=1)
 
+    def _create_jogging_frame(self, parent):
+        jog_frame = ttk.LabelFrame(parent, text="Jogging Control", padding="10")
+        jog_frame.grid(row=3, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=10)
+
+        ttk.Label(jog_frame, text="Jog Axis:").grid(row=0, column=0, padx=5)
+        axis_combo = ttk.Combobox(
+            jog_frame,
+            textvariable=self.jog_axis_var,
+            values=['X', 'Y', 'Z', 'Rx', 'Ry', 'Rz'],
+            state='readonly',
+            width=5
+        )
+        axis_combo.grid(row=0, column=1, padx=5)
+
+        ttk.Label(jog_frame, text="Jog Velocity (%):").grid(row=1, column=0, padx=5)
+        jog_vel_scale = ttk.Scale(jog_frame, from_=MIN_VELOCITY, to=MAX_VELOCITY, variable=self.jog_velocity_var, orient=tk.HORIZONTAL)
+        jog_vel_scale.grid(row=1, column=1, sticky=(tk.W, tk.E), padx=5)
+        self.jog_vel_label = ttk.Label(jog_frame, text=f"{DEFAULT_VELOCITY}%", width=4)
+        self.jog_vel_label.grid(row=1, column=2, padx=5)
+        self.jog_velocity_var.trace_add('write', self._update_jog_vel_label)
+
+        ttk.Label(jog_frame, text="Jog Overdrive (%):").grid(row=2, column=0, padx=5)
+        jog_ovl_scale = ttk.Scale(jog_frame, from_=MIN_OVERDRIVE, to=MAX_OVERDRIVE, variable=self.jog_overdrive_var, orient=tk.HORIZONTAL)
+        jog_ovl_scale.grid(row=2, column=1, sticky=(tk.W, tk.E), padx=5)
+        self.jog_ovl_label = ttk.Label(jog_frame, text=f"{DEFAULT_OVERDRIVE}%", width=4)
+        self.jog_ovl_label.grid(row=2, column=2, padx=5)
+        self.jog_overdrive_var.trace_add('write', self._update_jog_ovl_label)
+
+        jog_btn_frame = ttk.Frame(jog_frame)
+        jog_btn_frame.grid(row=3, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=10)
+
+        self.jog_positive_btn = ttk.Button(jog_btn_frame, text="Jog +", command=self.start_jog_positive, state=tk.DISABLED)
+        self.jog_positive_btn.pack(side=tk.LEFT, padx=5)
+
+        self.jog_negative_btn = ttk.Button(jog_btn_frame, text="Jog -", command=self.start_jog_negative, state=tk.DISABLED)
+        self.jog_negative_btn.pack(side=tk.LEFT, padx=5)
+
+        self.jog_stop_btn = ttk.Button(jog_btn_frame, text="Stop Jog", command=self.stop_jog, state=tk.DISABLED)
+        self.jog_stop_btn.pack(side=tk.LEFT, padx=5)
+
+        jog_frame.columnconfigure(1, weight=1)
+
     def _create_status_frame(self, parent):
         status_frame = ttk.LabelFrame(parent, text="Robot Status", padding="10")
-        status_frame.grid(row=3, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=10)
+        status_frame.grid(row=4, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=10)
 
         ttk.Label(status_frame, text="Current Position (mm):").grid(row=0, column=0, sticky=tk.W, padx=5)
         self.pos_label = ttk.Label(status_frame, text=f"X: {DEFAULT_POSITION['X']:.2f}  Y: {DEFAULT_POSITION['Y']:.2f}  Z: {DEFAULT_POSITION['Z']:.2f}", font=("Arial", 11, "bold"))
@@ -178,6 +231,9 @@ class CobotControlGUI:
                 self.stop_btn.config(state=tk.NORMAL)
                 self.home_btn.config(state=tk.NORMAL)
                 self.reset_btn.config(state=tk.NORMAL)
+                self.jog_positive_btn.config(state=tk.NORMAL)
+                self.jog_negative_btn.config(state=tk.NORMAL)
+                self.jog_stop_btn.config(state=tk.NORMAL)
 
                 self.update_info("Resetting to safe position...")
                 self.root.update()
@@ -221,6 +277,9 @@ class CobotControlGUI:
         self.stop_btn.config(state=tk.DISABLED)
         self.home_btn.config(state=tk.DISABLED)
         self.reset_btn.config(state=tk.DISABLED)
+        self.jog_positive_btn.config(state=tk.DISABLED)
+        self.jog_negative_btn.config(state=tk.DISABLED)
+        self.jog_stop_btn.config(state=tk.DISABLED)
 
         self.update_info("Disconnected from robot")
 
@@ -284,7 +343,6 @@ class CobotControlGUI:
             self.update_info(f"Error resetting joints: {str(e)}")
             print(f"Reset Exception: {e}")
 
-    # ...existing code...
     def move_to_reset(self):
         if not self.connection or not self.connection.is_connected:
             messagebox.showerror(
@@ -401,8 +459,6 @@ class CobotControlGUI:
             )
             self.update_info(f"Error: {str(e)}")
 
-
-
     def stop_motion(self):
         if not self.connection or not self.connection.is_connected:
             messagebox.showerror(
@@ -441,6 +497,128 @@ class CobotControlGUI:
 
     def _update_ovl_label(self, *args):
         self.ovl_label.config(text=f"{self.overdrive_var.get()}%")
+
+    def _update_jog_vel_label(self, *args):
+        self.jog_vel_label.config(text=f"{self.jog_velocity_var.get()}%")
+
+    def _update_jog_ovl_label(self, *args):
+        self.jog_ovl_label.config(text=f"{self.jog_overdrive_var.get()}%")
+
+    def start_jog_positive(self):
+        if not self.connection or not self.connection.is_connected:
+            messagebox.showerror(
+                "Robot Not Connected",
+                "Cannot jog robot.\n\n"
+                "Please connect to the robot first using the 'Connect' button."
+            )
+            return
+
+        try:
+            axis = self.jog_axis_var.get()
+            axis_map = {'X': 1, 'Y': 2, 'Z': 3, 'Rx': 4, 'Ry': 5, 'Rz': 6}
+            axis_id = axis_map.get(axis, 1)
+
+            self.update_info(f"Jogging {axis} in positive direction...")
+            self.root.update()
+
+            error = self.connection.start_jog(
+                axis_id,
+                1,
+                self.jog_velocity_var.get(),
+                self.jog_overdrive_var.get()
+            )
+
+            if error == 0:
+                self.jogging_active = True
+                self.update_info(f"Jogging {axis} positive")
+            else:
+                messagebox.showerror(
+                    "Jog Error",
+                    f"Failed to start jog in positive direction.\n\n"
+                    f"Error Code: {error}\n\n"
+                    f"Axis: {axis}"
+                )
+                self.update_info(f"Jog failed with error {error}")
+        except Exception as e:
+            messagebox.showerror(
+                "Jog Exception",
+                f"An unexpected error occurred during jog:\n\n{str(e)}"
+            )
+            self.update_info(f"Error: {str(e)}")
+
+    def start_jog_negative(self):
+        if not self.connection or not self.connection.is_connected:
+            messagebox.showerror(
+                "Robot Not Connected",
+                "Cannot jog robot.\n\n"
+                "Please connect to the robot first using the 'Connect' button."
+            )
+            return
+
+        try:
+            axis = self.jog_axis_var.get()
+            axis_map = {'X': 1, 'Y': 2, 'Z': 3, 'Rx': 4, 'Ry': 5, 'Rz': 6}
+            axis_id = axis_map.get(axis, 1)
+
+            self.update_info(f"Jogging {axis} in negative direction...")
+            self.root.update()
+
+            error = self.connection.start_jog(
+                axis_id,
+                -1,
+                self.jog_velocity_var.get(),
+                self.jog_overdrive_var.get()
+            )
+
+            if error == 0:
+                self.jogging_active = True
+                self.update_info(f"Jogging {axis} negative")
+            else:
+                messagebox.showerror(
+                    "Jog Error",
+                    f"Failed to start jog in negative direction.\n\n"
+                    f"Error Code: {error}\n\n"
+                    f"Axis: {axis}"
+                )
+                self.update_info(f"Jog failed with error {error}")
+        except Exception as e:
+            messagebox.showerror(
+                "Jog Exception",
+                f"An unexpected error occurred during jog:\n\n{str(e)}"
+            )
+            self.update_info(f"Error: {str(e)}")
+
+    def stop_jog(self):
+        if not self.connection or not self.connection.is_connected:
+            messagebox.showerror(
+                "Robot Not Connected",
+                "Cannot stop jog.\n\n"
+                "Please connect to the robot first using the 'Connect' button."
+            )
+            return
+
+        try:
+            self.update_info("Stopping jog...")
+            self.root.update()
+
+            error = self.connection.stop_jog()
+
+            if error == 0:
+                self.jogging_active = False
+                self.update_info("Jog stopped")
+            else:
+                messagebox.showerror(
+                    "Stop Jog Error",
+                    f"Failed to stop jog.\n\n"
+                    f"Error Code: {error}"
+                )
+                self.update_info(f"Stop jog failed with error {error}")
+        except Exception as e:
+            messagebox.showerror(
+                "Stop Jog Exception",
+                f"An unexpected error occurred while stopping jog:\n\n{str(e)}"
+            )
+            self.update_info(f"Error: {str(e)}")
 
     def update_info(self, message):
         self.info_label.config(text=message)

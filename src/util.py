@@ -63,8 +63,32 @@ class RobotConnection:
             return -1
         return self.robot.StopMotion()
 
+    def start_jog(self, axis, direction, vel, ovl):
+        if not self.robot:
+            return -1
+        vel = max(1.0, min(100.0, float(vel)))
+        ovl = max(1.0, min(100.0, float(ovl)))
+        try:
+            return self.robot.StartJog(
+                int(axis),
+                int(direction),
+                float(vel),
+                float(ovl)
+            )
+        except Exception as e:
+            print(f"StartJog error: {e}")
+            return -1
+
+    def stop_jog(self):
+        if not self.robot:
+            return -1
+        try:
+            return self.robot.StopJog()
+        except Exception as e:
+            print(f"StopJog error: {e}")
+            return -1
+
     def get_state(self):
         if self.robot and hasattr(self.robot, 'robot_state_pkg'):
             return self.robot.robot_state_pkg
         return None
-
