@@ -26,7 +26,7 @@ class RobotConnection:
         self.robot = None
 
     def move_l(self, desc_pos, vel, ovl):
-        if not self.robot or not hasattr(self.robot, 'robot'):
+        if not self.robot:
             return -1
         vel = max(1.0, min(100.0, float(vel)))
         ovl = max(1.0, min(100.0, float(ovl)))
@@ -36,16 +36,7 @@ class RobotConnection:
         desc_pos = desc_pos[:6]
 
         try:
-            return self.robot.robot.MoveCart(
-                desc_pos,
-                int(TOOL_ID),
-                int(USER_ID),
-                float(vel),
-                0.0,
-                float(ovl),
-                -1.0,
-                int(-1)
-            )
+            return self.robot.MoveCart(desc_pos, TOOL_ID, USER_ID, vel=vel, acc=0.0, ovl=ovl, blendT=-1.0, config=-1)
         except Exception as e:
             print(f"MoveCart error: {e}")
             return -1
@@ -63,29 +54,54 @@ class RobotConnection:
             return -1
         return self.robot.StopMotion()
 
-    def start_jog(self, axis, direction, vel, ovl):
+    def start_jog(self, ref, nb, direction, vel, acc=100.0, max_dis=100.0):
+        """
+        Safe wrapper for StartJOG that sanitizes inputs to prevent Error 4.
+        """
         if not self.robot:
-            return -1
-        vel = max(1.0, min(100.0, float(vel)))
-        ovl = max(1.0, min(100.0, float(ovl)))
-        try:
-            return self.robot.StartJog(
-                int(axis),
-                int(direction),
-                float(vel),
-                float(ovl)
-            )
-        except Exception as e:
-            print(f"StartJog error: {e}")
             return -1
 
-    def stop_jog(self):
+        # 1. Sanitize Velocity & Acceleration (0-100)
+        vel = max(0.1, min(100.0, float(vel)))
+        acc = max(1.0, min(100.0, float(acc)))
+
+        # 2. Sanitize Direction (CRITICAL FIX)
+        # The robot only accepts 0 or 1.
+        # If you passed -1 (from GUI), this converts it to 0.
+        safe_direction = 1 if int(direction) > 0 else 0
+
+        # 3. Sanitize Axis Index
+        nb = int(nb)
+
+        try:
+            return self.robot.StartJOG(
+                int(ref),
+                nb,
+                safe_direction,
+                float(vel),
+                float(acc),
+                float(max_dis)
+            )
+        except Exception as e:
+            print(f"StartJOG error: {e}")
+            return -1
+
+    def stop_jog(self, ref=1):
         if not self.robot:
             return -1
         try:
-            return self.robot.StopJog()
+            return self.robot.StopJOG(int(ref))
         except Exception as e:
-            print(f"StopJog error: {e}")
+            print(f"StopJOG error: {e}")
+            return -1
+
+    def imm_stop_jog(self):
+        if not self.robot:
+            return -1
+        try:
+            return self.robot.ImmStopJOG()
+        except Exception as e:
+            print(f"ImmStopJOG error: {e}")
             return -1
 
     def get_state(self):

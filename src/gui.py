@@ -190,7 +190,7 @@ class CobotControlGUI:
         status_frame.grid(row=4, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=10)
 
         ttk.Label(status_frame, text="Current Position (mm):").grid(row=0, column=0, sticky=tk.W, padx=5)
-        self.pos_label = ttk.Label(status_frame, text=f"X: {DEFAULT_POSITION['X']:.2f}  Y: {DEFAULT_POSITION['Y']:.2f}  Z: {DEFAULT_POSITION['Z']:.2f}", font=("Arial", 11, "bold"))
+        self.pos_label = ttk.Label(status_frame, text=f"X: {DEFAULT_POSITION['X']:.2f}  Y: {DEFAULT_POSITION['Y']:.2f}  Z: {DEFAULT_POSITION['Z']:.2f}  Rx: {DEFAULT_ROTATION['Rx']:.2f}°  Ry: {DEFAULT_ROTATION['Ry']:.2f}°  Rz: {DEFAULT_ROTATION['Rz']:.2f}°", font=("Arial", 11, "bold"))
         self.pos_label.grid(row=0, column=1, sticky=tk.W, padx=5)
 
         ttk.Label(status_frame, text="Robot State:").grid(row=1, column=0, sticky=tk.W, padx=5)
@@ -307,6 +307,35 @@ class CobotControlGUI:
 
                     self.root.after(0, lambda t=state_text, c=state_color: self.state_label.config(text=t, foreground=c))
 
+                    if state_pkg.tl_cur_pos:
+                        x = state_pkg.tl_cur_pos[0]
+                        y = state_pkg.tl_cur_pos[1]
+                        z = state_pkg.tl_cur_pos[2]
+                        rx = state_pkg.tl_cur_pos[3]
+                        ry = state_pkg.tl_cur_pos[4]
+                        rz = state_pkg.tl_cur_pos[5]
+
+                        self.current_pos['X'] = x
+                        self.current_pos['Y'] = y
+                        self.current_pos['Z'] = z
+                        self.current_rot['Rx'] = rx
+                        self.current_rot['Ry'] = ry
+                        self.current_rot['Rz'] = rz
+
+                        def update_sliders():
+                            self.constraint_frames['X'].set_value(x)
+                            self.constraint_frames['Y'].set_value(y)
+                            self.constraint_frames['Z'].set_value(z)
+                            self.rotation_frames['Rx'].set_value(rx)
+                            self.rotation_frames['Ry'].set_value(ry)
+                            self.rotation_frames['Rz'].set_value(rz)
+
+                            self.pos_label.config(
+                                text=f"X: {x:.2f}  Y: {y:.2f}  Z: {z:.2f}  Rx: {rx:.2f}°  Ry: {ry:.2f}°  Rz: {rz:.2f}°"
+                            )
+
+                        self.root.after(0, update_sliders)
+
                 time.sleep(MONITOR_THREAD_INTERVAL)
             except Exception as e:
                 pass
@@ -315,9 +344,13 @@ class CobotControlGUI:
         if not self.connection or not self.connection.is_connected:
             return
 
+        import threading
+        thread = threading.Thread(target=self._reset_joints_thread, daemon=True)
+        thread.start()
+
+    def _reset_joints_thread(self):
         try:
-            self.update_info("Resetting joints to 0 position...")
-            self.root.update()
+            self.root.after(0, lambda: self.update_info("Resetting joints to 0 position..."))
 
             error = self.connection.move_j(RESET_JOINTS_POSITION, RESET_VELOCITY, RESET_OVERDRIVE)
 
@@ -336,11 +369,11 @@ class CobotControlGUI:
                 self.root.after(0, lambda: self.pos_label.config(
                      text=f"X: {HOME_POSITION[0]:.2f}  Y: {HOME_POSITION[1]:.2f}  Z: {HOME_POSITION[2]:.2f}"
                 ))
-                self.update_info("Reset Complete: Joints at 0 degrees")
+                self.root.after(0, lambda: self.update_info("Reset Complete: Joints at 0 degrees"))
             else:
-                self.update_info(f"Joint reset failed with error {error}")
+                self.root.after(0, lambda err=error: self.update_info(f"Joint reset failed with error {err}"))
         except Exception as e:
-            self.update_info(f"Error resetting joints: {str(e)}")
+            self.root.after(0, lambda ex=str(e): self.update_info(f"Error resetting joints: {ex}"))
             print(f"Reset Exception: {e}")
 
     def move_to_reset(self):
@@ -363,6 +396,11 @@ class CobotControlGUI:
             )
             return
 
+        import threading
+        thread = threading.Thread(target=self._move_to_position_thread, daemon=True)
+        thread.start()
+
+    def _move_to_position_thread(self):
         try:
             x = self.constraint_frames['X'].get_value()
             y = self.constraint_frames['Y'].get_value()
@@ -373,8 +411,7 @@ class CobotControlGUI:
 
             desc_pos = [x, y, z, rx, ry, rz]
 
-            self.update_info("Moving to position...")
-            self.root.update()
+            self.root.after(0, lambda: self.update_info("Moving to position..."))
 
             error = self.connection.move_l(desc_pos, self.velocity_var.get(), self.overdrive_var.get())
 
@@ -385,25 +422,28 @@ class CobotControlGUI:
                 self.current_rot['Rx'] = desc_pos[3]
                 self.current_rot['Ry'] = desc_pos[4]
                 self.current_rot['Rz'] = desc_pos[5]
-                self.update_info("Movement completed successfully")
+                self.root.after(0, lambda pos=desc_pos: self.pos_label.config(
+                    text=f"X: {pos[0]:.2f}  Y: {pos[1]:.2f}  Z: {pos[2]:.2f}  Rx: {pos[3]:.2f}°  Ry: {pos[4]:.2f}°  Rz: {pos[5]:.2f}°"
+                ))
+                self.root.after(0, lambda: self.update_info("Movement completed successfully"))
             else:
-                messagebox.showerror(
+                self.root.after(0, lambda err=error, pos=desc_pos: messagebox.showerror(
                     "Movement Error",
                     f"Failed to move robot to position.\n\n"
-                    f"Error Code: {error}\n\n"
+                    f"Error Code: {err}\n\n"
                     f"Target Position:\n"
-                    f"X: {desc_pos[0]:.2f}mm, Y: {desc_pos[1]:.2f}mm, Z: {desc_pos[2]:.2f}mm\n"
-                    f"Rx: {desc_pos[3]:.2f}°, Ry: {desc_pos[4]:.2f}°, Rz: {desc_pos[5]:.2f}°\n\n"
+                    f"X: {pos[0]:.2f}mm, Y: {pos[1]:.2f}mm, Z: {pos[2]:.2f}mm\n"
+                    f"Rx: {pos[3]:.2f}°, Ry: {pos[4]:.2f}°, Rz: {pos[5]:.2f}°\n\n"
                     f"Please check if position is within safe range."
-                )
-                self.update_info(f"Movement failed with error {error}")
+                ))
+                self.root.after(0, lambda err=error: self.update_info(f"Movement failed with error {err}"))
         except Exception as e:
-            messagebox.showerror(
+            self.root.after(0, lambda ex=str(e): messagebox.showerror(
                 "Movement Exception",
-                f"An unexpected error occurred during movement:\n\n{str(e)}\n\n"
+                f"An unexpected error occurred during movement:\n\n{ex}\n\n"
                 f"Please try again or restart the connection."
-            )
-            self.update_info(f"Error: {str(e)}")
+            ))
+            self.root.after(0, lambda ex=str(e): self.update_info(f"Error: {ex}"))
 
     def move_to_home(self):
         if not self.connection or not self.connection.is_connected:
@@ -414,9 +454,13 @@ class CobotControlGUI:
             )
             return
 
+        import threading
+        thread = threading.Thread(target=self._move_to_home_thread, daemon=True)
+        thread.start()
+
+    def _move_to_home_thread(self):
         try:
-            self.update_info("Moving to home position...")
-            self.root.update()
+            self.root.after(0, lambda: self.update_info("Moving to home position..."))
 
             error = self.connection.move_l(HOME_POSITION, self.velocity_var.get(), self.overdrive_var.get())
 
@@ -441,23 +485,22 @@ class CobotControlGUI:
                 self.root.after(0, lambda: self.pos_label.config(
                     text=f"X: {HOME_POSITION[0]:.2f}  Y: {HOME_POSITION[1]:.2f}  Z: {HOME_POSITION[2]:.2f}  Rx: {HOME_POSITION[3]:.2f}°  Ry: {HOME_POSITION[4]:.2f}°  Rz: {HOME_POSITION[5]:.2f}°"
                 ))
-                self.update_info("Home position reached")
+                self.root.after(0, lambda: self.update_info("Home position reached"))
             else:
-                messagebox.showerror(
+                self.root.after(0, lambda err=error: messagebox.showerror(
                     "Home Position Error",
                     f"Failed to move robot to home position.\n\n"
-                    f"Error Code: {error}\n\n"
+                    f"Error Code: {err}\n\n"
                     f"Home Position: X: {HOME_POSITION[0]:.1f}mm, Y: {HOME_POSITION[1]:.1f}mm, Z: {HOME_POSITION[2]:.1f}mm\n\n"
                     f"Please check robot status and try again."
-                )
-                self.update_info(f"Home movement failed with error {error}")
+                ))
+                self.root.after(0, lambda err=error: self.update_info(f"Home position move failed with error {err}"))
         except Exception as e:
-            messagebox.showerror(
-                "Home Movement Exception",
-                f"An unexpected error occurred moving to home:\n\n{str(e)}\n\n"
-                f"Please verify the robot is in a safe state."
-            )
-            self.update_info(f"Error: {str(e)}")
+            self.root.after(0, lambda ex=str(e): messagebox.showerror(
+                "Home Position Exception",
+                f"An unexpected error occurred moving to home:\n\n{ex}"
+            ))
+            self.root.after(0, lambda ex=str(e): self.update_info(f"Error: {ex}"))
 
     def stop_motion(self):
         if not self.connection or not self.connection.is_connected:
@@ -468,29 +511,33 @@ class CobotControlGUI:
             )
             return
 
+        import threading
+        thread = threading.Thread(target=self._stop_motion_thread, daemon=True)
+        thread.start()
+
+    def _stop_motion_thread(self):
         try:
-            self.update_info("Stopping motion...")
-            self.root.update()
+            self.root.after(0, lambda: self.update_info("Stopping motion..."))
 
             error = self.connection.stop_motion()
 
             if error == 0:
-                self.update_info("Motion stopped")
+                self.root.after(0, lambda: self.update_info("Motion stopped"))
             else:
-                messagebox.showerror(
+                self.root.after(0, lambda err=error: messagebox.showerror(
                     "Stop Motion Error",
                     f"Failed to stop robot motion.\n\n"
-                    f"Error Code: {error}\n\n"
+                    f"Error Code: {err}\n\n"
                     f"Please check robot status and try again."
-                )
-                self.update_info(f"Stop failed with error {error}")
+                ))
+                self.root.after(0, lambda err=error: self.update_info(f"Stop failed with error {err}"))
         except Exception as e:
-            messagebox.showerror(
+            self.root.after(0, lambda ex=str(e): messagebox.showerror(
                 "Stop Motion Exception",
-                f"An unexpected error occurred while stopping:\n\n{str(e)}\n\n"
+                f"An unexpected error occurred while stopping:\n\n{ex}\n\n"
                 f"Please verify the robot is powered and connected."
-            )
-            self.update_info(f"Error: {str(e)}")
+            ))
+            self.root.after(0, lambda ex=str(e): self.update_info(f"Error: {ex}"))
 
     def _update_vel_label(self, *args):
         self.vel_label.config(text=f"{self.velocity_var.get()}%")
@@ -513,38 +560,41 @@ class CobotControlGUI:
             )
             return
 
+        import threading
+        thread = threading.Thread(target=self._start_jog_positive_thread, daemon=True)
+        thread.start()
+
+    def _start_jog_positive_thread(self):
         try:
             axis = self.jog_axis_var.get()
-            axis_map = {'X': 1, 'Y': 2, 'Z': 3, 'Rx': 4, 'Ry': 5, 'Rz': 6}
-            axis_id = axis_map.get(axis, 1)
+            joint_map = {'X': 1, 'Y': 2, 'Z': 3, 'Rx': 4, 'Ry': 5, 'Rz': 6}
+            joint_nb = joint_map.get(axis, 1)
 
-            self.update_info(f"Jogging {axis} in positive direction...")
-            self.root.update()
+            # FIX: Use ref=2 (Base Coordinate) for X,Y,Z. ref=0 is for Joints (J1-J6).
+            ref = 2
 
+            self.root.after(0, lambda: self.update_info(f"Jogging {axis} in positive direction..."))
+
+            # FIX: Use keyword arguments to ensure values go to the right place
             error = self.connection.start_jog(
-                axis_id,
-                1,
-                self.jog_velocity_var.get(),
-                self.jog_overdrive_var.get()
+                ref=ref,
+                nb=joint_nb,
+                direction=1,      # 1 = Positive
+                vel=self.jog_velocity_var.get(),
+                acc=100.0,
+                max_dis=200.0     # Increased safety distance slightly
             )
 
             if error == 0:
                 self.jogging_active = True
-                self.update_info(f"Jogging {axis} positive")
+                self.root.after(0, lambda: self.update_info(f"Jogging {axis} positive"))
             else:
-                messagebox.showerror(
+                self.root.after(0, lambda err=error, ax=axis: messagebox.showerror(
                     "Jog Error",
-                    f"Failed to start jog in positive direction.\n\n"
-                    f"Error Code: {error}\n\n"
-                    f"Axis: {axis}"
-                )
-                self.update_info(f"Jog failed with error {error}")
+                    f"Failed to start jog.\nError: {err}\nCheck if 'ref=2' is supported."
+                ))
         except Exception as e:
-            messagebox.showerror(
-                "Jog Exception",
-                f"An unexpected error occurred during jog:\n\n{str(e)}"
-            )
-            self.update_info(f"Error: {str(e)}")
+            self.root.after(0, lambda ex=str(e): self.update_info(f"Error: {ex}"))
 
     def start_jog_negative(self):
         if not self.connection or not self.connection.is_connected:
@@ -555,38 +605,41 @@ class CobotControlGUI:
             )
             return
 
+        import threading
+        thread = threading.Thread(target=self._start_jog_negative_thread, daemon=True)
+        thread.start()
+
+    def _start_jog_negative_thread(self):
         try:
             axis = self.jog_axis_var.get()
-            axis_map = {'X': 1, 'Y': 2, 'Z': 3, 'Rx': 4, 'Ry': 5, 'Rz': 6}
-            axis_id = axis_map.get(axis, 1)
+            joint_map = {'X': 1, 'Y': 2, 'Z': 3, 'Rx': 4, 'Ry': 5, 'Rz': 6}
+            joint_nb = joint_map.get(axis, 1)
 
-            self.update_info(f"Jogging {axis} in negative direction...")
-            self.root.update()
+            # FIX: Use ref=2 for Base Coordinate
+            ref = 2
 
+            self.root.after(0, lambda: self.update_info(f"Jogging {axis} in negative direction..."))
+
+            # FIX: Explicitly send 0 for Negative (not -1)
             error = self.connection.start_jog(
-                axis_id,
-                -1,
-                self.jog_velocity_var.get(),
-                self.jog_overdrive_var.get()
+                ref=ref,
+                nb=joint_nb,
+                direction=0,       # 0 = Negative (CRITICAL FIX)
+                vel=self.jog_velocity_var.get(),
+                acc=100.0,
+                max_dis=200.0
             )
 
             if error == 0:
                 self.jogging_active = True
-                self.update_info(f"Jogging {axis} negative")
+                self.root.after(0, lambda: self.update_info(f"Jogging {axis} negative"))
             else:
-                messagebox.showerror(
+                self.root.after(0, lambda err=error, ax=axis: messagebox.showerror(
                     "Jog Error",
-                    f"Failed to start jog in negative direction.\n\n"
-                    f"Error Code: {error}\n\n"
-                    f"Axis: {axis}"
-                )
-                self.update_info(f"Jog failed with error {error}")
+                    f"Failed to start jog.\nError: {err}"
+                ))
         except Exception as e:
-            messagebox.showerror(
-                "Jog Exception",
-                f"An unexpected error occurred during jog:\n\n{str(e)}"
-            )
-            self.update_info(f"Error: {str(e)}")
+            self.root.after(0, lambda ex=str(e): self.update_info(f"Error: {ex}"))
 
     def stop_jog(self):
         if not self.connection or not self.connection.is_connected:
@@ -597,28 +650,32 @@ class CobotControlGUI:
             )
             return
 
-        try:
-            self.update_info("Stopping jog...")
-            self.root.update()
+        import threading
+        thread = threading.Thread(target=self._stop_jog_thread, daemon=True)
+        thread.start()
 
-            error = self.connection.stop_jog()
+    def _stop_jog_thread(self):
+        try:
+            self.root.after(0, lambda: self.update_info("Stopping jog..."))
+
+            error = self.connection.stop_jog(ref=1)
 
             if error == 0:
                 self.jogging_active = False
-                self.update_info("Jog stopped")
+                self.root.after(0, lambda: self.update_info("Jog stopped"))
             else:
-                messagebox.showerror(
+                self.root.after(0, lambda err=error: messagebox.showerror(
                     "Stop Jog Error",
                     f"Failed to stop jog.\n\n"
-                    f"Error Code: {error}"
-                )
-                self.update_info(f"Stop jog failed with error {error}")
+                    f"Error Code: {err}"
+                ))
+                self.root.after(0, lambda err=error: self.update_info(f"Stop jog failed with error {err}"))
         except Exception as e:
-            messagebox.showerror(
+            self.root.after(0, lambda ex=str(e): messagebox.showerror(
                 "Stop Jog Exception",
-                f"An unexpected error occurred while stopping jog:\n\n{str(e)}"
-            )
-            self.update_info(f"Error: {str(e)}")
+                f"An unexpected error occurred while stopping jog:\n\n{ex}"
+            ))
+            self.root.after(0, lambda ex=str(e): self.update_info(f"Error: {ex}"))
 
     def update_info(self, message):
         self.info_label.config(text=message)
